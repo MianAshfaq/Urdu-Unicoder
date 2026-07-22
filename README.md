@@ -33,6 +33,8 @@ Created and maintained by **Muhammad Ashfaq**.
 - Imports Microsoft Word `.docx`, UTF-8/UTF-16 text, and Markdown files into the editor
 - Pastes clipboard text while converting legacy presentation glyphs to standard Unicode Urdu
 - Saves the editor as portable UTF-8 Unicode text
+- Uses a dedicated Windows AppUserModelID and branded ICO so the running taskbar window shows Urdu Unicoder instead of Python
+- Checks GitHub automatically for new versions and provides **Help → Check for Updates**
 
 ## Install on Windows
 
@@ -163,6 +165,18 @@ py -3 -m venv .venv
 .venv\Scripts\python.exe -m unittest discover -v
 .venv\Scripts\python.exe app\main.py
 ```
+
+## Updates
+
+Urdu Unicoder checks the public `version.json` manifest on this repository shortly after startup. It does not install anything silently.
+
+- When a newer version is available, the user sees the version number and release notes and chooses whether to install it.
+- Source installations downloaded or cloned from GitHub use the external updater, which closes the application, downloads the official repository archive over HTTPS, updates only application files, installs new Python requirements, and restarts Urdu Unicoder.
+- `.ubp` projects, exported books, the local virtual environment, and Git history are not replaced by the updater.
+- Packaged EXE builds open the official GitHub Releases page for the new installer because a running Windows executable should not replace itself.
+- Use **Help → Check for Updates** to run a manual check at any time.
+
+Maintainers must update `APP_VERSION` in `app/main.py` and the matching `version` and release notes in `version.json` in the same commit. The automated tests fail if these versions differ.
 
 ## License
 

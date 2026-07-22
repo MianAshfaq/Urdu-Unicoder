@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -5,6 +6,7 @@ import unittest
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("URDU_UNICODER_DISABLE_UPDATE_CHECK", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parent / "app"))
 
 from PySide6.QtCore import QMarginsF
@@ -13,8 +15,8 @@ from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import QApplication, QScrollArea, QToolBar
 
 from main import (
-    APP_NAME, LOGO_PATH, ExtractWorker, LayoutSettings, MainWindow,
-    extract_docx_text,
+    APP_NAME, APP_VERSION, ICON_PATH, LOGO_PATH, ExtractWorker, LayoutSettings,
+    MainWindow, extract_docx_text, version_tuple,
 )
 
 
@@ -51,10 +53,16 @@ class UiAndPdfTests(unittest.TestCase):
     def test_logo_and_advanced_editor_are_available(self):
         window = MainWindow()
         self.assertTrue(LOGO_PATH.exists())
+        self.assertTrue(ICON_PATH.exists())
         self.assertFalse(window.windowIcon().isNull())
         self.assertIsNotNone(window.findChild(QScrollArea, "settingsScroll"))
         self.assertIsNotNone(window.findChild(QToolBar, "editorToolbar"))
         window.close()
+
+    def test_update_manifest_matches_application_version(self):
+        manifest = json.loads((Path(__file__).parent / "version.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["version"], APP_VERSION)
+        self.assertGreater(version_tuple("1.10.0"), version_tuple("1.9.9"))
 
     def test_unicode_find_replace_and_normalization(self):
         window = MainWindow()

@@ -17,6 +17,7 @@ echo Building Windows executable...
   --name "Urdu Unicoder" ^
   --icon "assets\urdu-unicoder.ico" ^
   --add-data "assets;assets" ^
+  --add-data "version.json;." ^
   --collect-all PySide6 ^
   --collect-all fitz ^
   --collect-all docx ^

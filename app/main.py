@@ -4,18 +4,20 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import traceback
 import unicodedata
+import urllib.request
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
 
 import fitz  # PyMuPDF
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QMarginsF
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QMarginsF, QUrl
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QImage, QPixmap, QTextDocument, QPageSize,
-    QPageLayout, QTextCursor,
+    QAction, QDesktopServices, QFont, QIcon, QImage, QPixmap, QTextDocument,
+    QPageSize, QPageLayout, QTextCursor,
 )
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
@@ -27,12 +29,15 @@ from PySide6.QtWidgets import (
 )
 
 APP_NAME = "Urdu Unicoder"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 APP_AUTHOR = "Muhammad Ashfaq"
 AUTHOR_GITHUB = "https://github.com/MianAshfaq"
 AUTHOR_WEBSITE = "https://cyberoly.com/"
 AUTHOR_FACEBOOK = "https://www.facebook.com/MianAshfaq012"
 PROJECT_EXT = ".ubp"
+WINDOWS_APP_ID = "MuhammadAshfaq.UrduUnicoder"
+UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/MianAshfaq/Urdu-Unicoder/main/version.json"
+UPDATE_PAGE_URL = "https://github.com/MianAshfaq/Urdu-Unicoder/releases/latest"
 
 
 def resource_path(relative_path: str) -> Path:
@@ -42,6 +47,23 @@ def resource_path(relative_path: str) -> Path:
 
 
 LOGO_PATH = resource_path("assets/urdu-unicoder-logo-final.png")
+ICON_PATH = resource_path("assets/urdu-unicoder.ico")
+
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    numbers = re.findall(r"\d+", version)
+    return tuple(int(number) for number in numbers[:4]) or (0,)
+
+
+def set_windows_app_identity():
+    """Make Windows group the app under Urdu Unicoder rather than pythonw.exe."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
+    except Exception:
+        pass
 
 
 def extract_docx_text(path: str) -> str:
@@ -301,12 +323,31 @@ class PdfPageWorker(QThread):
             self.failed.emit(traceback.format_exc())
 
 
+class UpdateCheckWorker(QThread):
+    update_info = Signal(dict)
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            request = urllib.request.Request(
+                UPDATE_MANIFEST_URL,
+                headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"},
+            )
+            with urllib.request.urlopen(request, timeout=8) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            if not isinstance(data, dict) or not data.get("version"):
+                raise ValueError("The update manifest is invalid.")
+            self.update_info.emit(data)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        if LOGO_PATH.exists():
-            self.setWindowIcon(QIcon(str(LOGO_PATH)))
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1450, 900)
 
         self.pdf_path: Optional[str] = None
@@ -316,12 +357,16 @@ class MainWindow(QMainWindow):
         self.original_page_texts: list[str] = []
         self.worker: Optional[ExtractWorker] = None
         self.page_worker: Optional[PdfPageWorker] = None
+        self.update_worker: Optional[UpdateCheckWorker] = None
+        self.update_check_manual = False
         self.settings = LayoutSettings()
 
         self._build_ui()
         self._build_actions()
         self._apply_dark_theme()
         self.statusBar().showMessage("Ready")
+        if not os.environ.get("URDU_UNICODER_DISABLE_UPDATE_CHECK"):
+            QTimer.singleShot(2500, self.check_for_updates)
 
     def _build_actions(self):
         tb = QToolBar("Main")
@@ -430,6 +475,10 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.delete_line_action)
 
         help_menu = self.menuBar().addMenu("&Help")
+        update_action = QAction("Check for Updates…", self)
+        update_action.triggered.connect(lambda: self.check_for_updates(manual=True))
+        help_menu.addAction(update_action)
+        help_menu.addSeparator()
         guide_action = QAction("Complete User Guide", self)
         guide_action.setShortcut("F1")
         guide_action.triggered.connect(self.show_user_guide)
@@ -1588,11 +1637,93 @@ p.heading {{
         except Exception as exc:
             QMessageBox.critical(self, "PDF export failed", str(exc))
 
-    def save_project(self):
+    def check_for_updates(self, manual: bool = False):
+        if self.update_worker is not None and self.update_worker.isRunning():
+            if manual:
+                self.statusBar().showMessage("An update check is already running", 3000)
+            return
+        self.update_check_manual = manual
+        if manual:
+            self.statusBar().showMessage("Checking GitHub for updates…")
+        self.update_worker = UpdateCheckWorker(self)
+        self.update_worker.update_info.connect(self.on_update_info)
+        self.update_worker.failed.connect(self.on_update_check_failed)
+        self.update_worker.start()
+
+    def on_update_info(self, info: dict):
+        latest = str(info.get("version", "0"))
+        if version_tuple(latest) <= version_tuple(APP_VERSION):
+            if self.update_check_manual:
+                QMessageBox.information(
+                    self, "No updates available",
+                    f"{APP_NAME} {APP_VERSION} is the latest version."
+                )
+            self.statusBar().showMessage(f"{APP_NAME} is up to date", 3500)
+            return
+
+        notes = str(info.get("notes", "Performance improvements and new features."))
+        reply = QMessageBox.question(
+            self,
+            "Urdu Unicoder update available",
+            f"Version {latest} is available. You are using {APP_VERSION}.\n\n"
+            f"What is new:\n{notes}\n\nDownload and install this update now?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.install_update(info)
+
+    def on_update_check_failed(self, error: str):
+        if self.update_check_manual:
+            QMessageBox.warning(
+                self, "Update check failed",
+                f"Urdu Unicoder could not contact GitHub.\n\n{error}"
+            )
+        self.statusBar().showMessage("Update check unavailable", 3500)
+
+    def install_update(self, info: dict):
+        if getattr(sys, "frozen", False):
+            release_url = str(info.get("release_url") or UPDATE_PAGE_URL)
+            QDesktopServices.openUrl(QUrl(release_url))
+            QMessageBox.information(
+                self, "Download opened",
+                "Download the latest Urdu Unicoder installer from the GitHub release page, "
+                "close this version, and run the installer. Your project files are not removed."
+            )
+            return
+
+        if self.editor.toPlainText().strip():
+            save_reply = QMessageBox.question(
+                self,
+                "Save before updating?",
+                "Save the current project before Urdu Unicoder closes for the update?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if save_reply == QMessageBox.Cancel:
+                return
+            if save_reply == QMessageBox.Yes and not self.save_project():
+                return
+
+        project_root = Path(__file__).resolve().parent.parent
+        updater = project_root / "app" / "updater.py"
+        if not updater.exists():
+            QDesktopServices.openUrl(QUrl(str(info.get("release_url") or UPDATE_PAGE_URL)))
+            return
+        try:
+            command = [sys.executable, str(updater), str(project_root), str(os.getpid())]
+            kwargs = {"cwd": str(project_root)}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            subprocess.Popen(command, **kwargs)
+            self.statusBar().showMessage("Installing update and restarting…")
+            QApplication.quit()
+        except Exception as exc:
+            QMessageBox.critical(self, "Update could not start", str(exc))
+
+    def save_project(self) -> bool:
         if not self.project_path:
             path, _ = QFileDialog.getSaveFileName(self, "Save Project", "My_Urdu_Book.ubp", "Urdu Unicoder Project (*.ubp)")
             if not path:
-                return
+                return False
             if not path.lower().endswith(PROJECT_EXT):
                 path += PROJECT_EXT
             self.project_path = path
@@ -1609,6 +1740,7 @@ p.heading {{
         Path(self.project_path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         self.setWindowTitle(f"{APP_NAME} — {Path(self.project_path).name}")
         self.statusBar().showMessage("Project saved")
+        return True
 
     def show_user_guide(self):
         dialog = QDialog(self)
@@ -1673,6 +1805,12 @@ p.heading {{
         <b>Save Editor Text</b> produces portable UTF-8 text. <b>Clean Whitespace</b> removes
         repeated spaces and excessive blank lines, while <b>Duplicate Line</b> and
         <b>Delete Line</b> speed up manuscript editing.</p>
+        <h2>Updates</h2>
+        <p>Urdu Unicoder checks its public GitHub version manifest shortly after startup and
+        displays a confirmation before installing anything. Source installations update the
+        application files and dependencies, then restart automatically; saved .ubp projects and
+        exported books are preserved. Packaged EXE installations open the official GitHub release
+        download. Choose <b>Help → Check for Updates</b> to check manually at any time.</p>
         <h2>Preview, projects, and export</h2>
         <p><b>Refresh Preview</b> applies all current settings. <b>Save Project</b> stores text,
         layout, source path, and page range in a .ubp file. <b>Open Project</b> restores it.
@@ -1728,16 +1866,19 @@ p.heading {{
                 event.ignore()
                 return
             if reply == QMessageBox.Yes:
-                self.save_project()
+                if not self.save_project():
+                    event.ignore()
+                    return
         event.accept()
 
 
 def main():
+    set_windows_app_identity()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("Muhammad Ashfaq")
-    if LOGO_PATH.exists():
-        app.setWindowIcon(QIcon(str(LOGO_PATH)))
+    if ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(ICON_PATH)))
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
