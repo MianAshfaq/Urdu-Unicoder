@@ -20,7 +20,7 @@ Created and maintained by **Muhammad Ashfaq**.
 - Previews original PDF pages and compares source text with reconstructed text
 - Normalizes Arabic Presentation Forms into searchable Unicode Urdu
 - Recovers legacy PDFs that store Urdu words in reversed visual order
-- Removes repeated `جاری ہے` page-continuation markers
+- Removes configurable page-continuation markers such as `جاری ہے`
 - Rebuilds wrapped PDF rows into flowing paragraphs
 - Provides a full RTL editor and live book preview
 - Supports A5, B5, and A4 paper; inner/outer/top/bottom margins; running headers; and page numbers
@@ -35,6 +35,9 @@ Created and maintained by **Muhammad Ashfaq**.
 - Saves the editor as portable UTF-8 Unicode text
 - Uses a dedicated Windows AppUserModelID and branded ICO so the running taskbar window shows Urdu Unicoder instead of Python
 - Checks GitHub automatically for new versions and provides **Help → Check for Updates**
+- Removes any user-configured page marker—not only `جاری ہے`—using exact-line matching that protects normal sentences
+- Detects repeated headers, footers, and continuation phrases automatically from extracted PDF pages
+- Includes a Unicode Health Check, Urdu punctuation polishing, and consecutive duplicate-line cleanup
 
 ## Install on Windows
 
@@ -67,7 +70,8 @@ For traditional Urdu book output, install **Noto Nastaliq Urdu**, **Jameel Noori
 | Start / End | Limits extraction to an inclusive PDF page range. | Use a small range for testing or a chapter at a time. |
 | Convert legacy Urdu glyphs to Unicode | Normalizes Arabic Presentation Form characters into standard Unicode. | Keep enabled for old Urdu publishing PDFs. |
 | Recover reversed visual-order lines | Changes visually stored word order into logical Urdu reading order. | Enable when extracted words appear reversed; disable if correct text becomes reversed. |
-| Remove repeated `جاری ہے` | Deletes page-end continuation markers. | Enable for novels/books that repeat this marker on pages. |
+| Remove configured page markers | Deletes complete lines matching any configured word or phrase. | Enter markers separated by semicolons, commas, or `|`; normal sentences containing the phrase are not removed. |
+| Detect Repeated Page Markers | Analyzes the first two and last three lines of every extracted page and suggests repeated headers/footers. | Extract at least two pages, review the checked suggestions, then add them to the marker list. |
 | Join wrapped lines | Treats PDF visual rows as parts of the same paragraph. | Usually enable for prose and novels. |
 | Preserve blank lines | Keeps meaningful empty source lines. | Useful when continuous paragraph mode is disabled. |
 | Join all wrapped lines into paragraphs | Ignores artificial blank rows inserted by some PDF generators. | Recommended for legacy novels with one extracted row per printed line. |
@@ -148,6 +152,9 @@ The Text Editor tab provides a Unicode-safe editing toolbar while keeping the do
 - **Recover Legacy Visual Order:** repairs selected or complete legacy text whose Urdu words are stored in display order.
 - **Clean Whitespace:** removes repeated spaces, trailing spaces, and excessive blank lines without merging paragraphs.
 - **Duplicate / Delete Line:** provides fast manuscript line editing with `Ctrl+D` and `Ctrl+Shift+K`.
+- **Unicode Health Check:** reports presentation-form glyphs, hidden bidi controls, invalid replacement characters, control characters, spacing groups, excess blank lines, and duplicate lines. Its one-click repair only applies safe Unicode fixes.
+- **Polish Urdu Punctuation:** converts punctuation beside Urdu text to `،`, `؛`, and `؟` and corrects punctuation spacing.
+- **Remove Consecutive Duplicate Lines:** removes immediately repeated lines while leaving intentional non-consecutive repetitions intact.
 
 ## Limitations
 

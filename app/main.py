@@ -9,7 +9,8 @@ import sys
 import traceback
 import unicodedata
 import urllib.request
-from dataclasses import dataclass, asdict
+from collections import Counter
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
 
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 APP_NAME = "Urdu Unicoder"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 APP_AUTHOR = "Muhammad Ashfaq"
 AUTHOR_GITHUB = "https://github.com/MianAshfaq"
 AUTHOR_WEBSITE = "https://cyberoly.com/"
@@ -64,6 +65,29 @@ def set_windows_app_identity():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
     except Exception:
         pass
+
+
+def discover_repeated_page_markers(page_texts: list[str]) -> list[tuple[int, str]]:
+    """Return repeated lines found near page edges, ordered by usefulness."""
+    counter: Counter[str] = Counter()
+    display_text: dict[str, str] = {}
+    for page_text in page_texts:
+        lines = [
+            re.sub(r"\s+", " ", unicodedata.normalize("NFKC", line)).strip()
+            for line in page_text.splitlines()
+            if line.strip()
+        ]
+        page_candidates: set[str] = set()
+        for line in lines[:2] + lines[-3:]:
+            if 1 < len(line) <= 100 and not re.fullmatch(r"\d+", line):
+                key = re.sub(r"[\s۔.!…؟،,:;\-–—]+$", "", line).casefold()
+                if key:
+                    page_candidates.add(key)
+                    display_text.setdefault(key, line)
+        counter.update(page_candidates)
+    suggestions = [(count, display_text[key]) for key, count in counter.items() if count >= 2]
+    suggestions.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+    return suggestions
 
 
 def extract_docx_text(path: str) -> str:
@@ -131,6 +155,7 @@ class LayoutSettings:
     margin_inner_mm: float = 20.0
     margin_outer_mm: float = 15.0
     remove_jari_hai: bool = True
+    removal_phrases: list[str] = field(default_factory=lambda: ["جاری ہے"])
     join_wrapped_lines: bool = True
     preserve_blank_lines: bool = True
     page_numbers: bool = True
@@ -222,6 +247,18 @@ class ExtractWorker(QThread):
         s = line.strip()
         return s.startswith(("“", "\"", "’", "‘", "—", "-", "؎"))
 
+    @staticmethod
+    def matches_removal_phrase(line: str, phrases: list[str]) -> bool:
+        """Match an exact marker while allowing harmless trailing punctuation."""
+        normalized_line = unicodedata.normalize("NFKC", line).strip()
+        normalized_line = re.sub(r"[\s۔.!…؟،,:;\-–—]+$", "", normalized_line).strip()
+        for phrase in phrases:
+            normalized_phrase = unicodedata.normalize("NFKC", phrase).strip()
+            normalized_phrase = re.sub(r"[\s۔.!…؟،,:;\-–—]+$", "", normalized_phrase).strip()
+            if normalized_phrase and normalized_line.casefold() == normalized_phrase.casefold():
+                return True
+        return False
+
     def reconstruct(self, lines: list[str]) -> str:
         out: list[str] = []
         buffer: list[str] = []
@@ -238,7 +275,9 @@ class ExtractWorker(QThread):
         for raw in lines:
             line = self.clean_line(raw)
 
-            if self.settings.remove_jari_hai and re.fullmatch(r"جاری\s+ہے[۔.!…]*", line):
+            if self.settings.remove_jari_hai and self.matches_removal_phrase(
+                line, self.settings.removal_phrases
+            ):
                 continue
 
             if not line:
@@ -470,6 +509,9 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.normalize_action)
         tools_menu.addAction(self.recover_order_action)
         tools_menu.addAction(self.clean_text_action)
+        tools_menu.addAction(self.punctuation_action)
+        tools_menu.addAction(self.remove_duplicates_action)
+        tools_menu.addAction(self.unicode_health_action)
         tools_menu.addSeparator()
         tools_menu.addAction(self.duplicate_line_action)
         tools_menu.addAction(self.delete_line_action)
@@ -575,6 +617,14 @@ class MainWindow(QMainWindow):
         self.recover_order_action.setToolTip("Convert presentation forms and correct reversed visual-order Urdu lines")
         self.clean_text_action = QAction("Clean Whitespace", self)
         self.clean_text_action.setShortcut("Ctrl+Shift+Space")
+        self.punctuation_action = QAction("Polish Urdu Punctuation", self)
+        self.punctuation_action.setShortcut("Ctrl+Alt+P")
+        self.punctuation_action.setToolTip("Convert punctuation next to Urdu text to Urdu comma, semicolon, and question-mark forms")
+        self.remove_duplicates_action = QAction("Remove Consecutive Duplicate Lines", self)
+        self.remove_duplicates_action.setShortcut("Ctrl+Alt+D")
+        self.unicode_health_action = QAction("Unicode Health Check", self)
+        self.unicode_health_action.setShortcut("Ctrl+Alt+H")
+        self.unicode_health_action.setToolTip("Inspect legacy glyphs, bidi controls, invalid characters, spacing, and duplicate lines")
         self.duplicate_line_action = QAction("Duplicate Line", self)
         self.duplicate_line_action.setShortcut("Ctrl+D")
         self.delete_line_action = QAction("Delete Line", self)
@@ -675,6 +725,9 @@ class MainWindow(QMainWindow):
         self.normalize_action.triggered.connect(self.normalize_editor_unicode)
         self.recover_order_action.triggered.connect(self.recover_legacy_visual_order)
         self.clean_text_action.triggered.connect(self.clean_editor_text)
+        self.punctuation_action.triggered.connect(self.polish_urdu_punctuation)
+        self.remove_duplicates_action.triggered.connect(self.remove_consecutive_duplicate_lines)
+        self.unicode_health_action.triggered.connect(self.show_unicode_health_check)
         self.duplicate_line_action.triggered.connect(self.duplicate_current_line)
         self.delete_line_action.triggered.connect(self.delete_current_line)
         self.stats_action.triggered.connect(self.show_text_statistics)
@@ -750,9 +803,21 @@ class MainWindow(QMainWindow):
         self.header_text.setPlaceholderText("Optional book title")
         self.header_text.setToolTip("Optional title printed at the top of each exported page.")
 
-        self.remove_jari = QCheckBox("Remove repeated 'جاری ہے'")
+        self.remove_jari = QCheckBox("Remove configured page markers")
         self.remove_jari.setChecked(True)
-        self.remove_jari.setToolTip("Remove repeated 'جاری ہے' markers commonly found at the bottom of source pages.")
+        self.remove_jari.setToolTip("Remove exact page headers, footers, and continuation markers listed below.")
+        self.removal_phrases = QLineEdit("جاری ہے")
+        self.removal_phrases.setLayoutDirection(Qt.RightToLeft)
+        self.removal_phrases.setPlaceholderText("جاری ہے؛ بقیہ اگلے صفحے پر")
+        self.removal_phrases.setToolTip(
+            "Enter any words or phrases to remove, separated by semicolons, commas, or vertical bars. "
+            "Only complete matching lines are removed, so normal sentences remain safe."
+        )
+        self.detect_markers_btn = QPushButton("Detect Repeated Page Markers")
+        self.detect_markers_btn.setToolTip(
+            "Analyze the first and last lines of extracted PDF pages and suggest repeated headers or footers."
+        )
+        self.detect_markers_btn.clicked.connect(self.detect_repeated_page_markers)
         self.join_lines = QCheckBox("Join wrapped lines")
         self.join_lines.setChecked(True)
         self.join_lines.setToolTip("Treat source PDF line wrapping as continuous paragraph text.")
@@ -809,6 +874,11 @@ class MainWindow(QMainWindow):
         form.addRow("Letter spacing:", self.letter_spacing)
         form.addRow("Text alignment:", self.text_align)
         form.addRow(self.remove_jari)
+        marker_label = QLabel("Page markers (separate with ; or ؛):")
+        marker_label.setToolTip(self.removal_phrases.toolTip())
+        form.addRow(marker_label)
+        form.addRow(self.removal_phrases)
+        form.addRow(self.detect_markers_btn)
         form.addRow(self.join_lines)
         form.addRow(self.preserve_blanks)
         form.addRow(self.normalize_forms)
@@ -922,6 +992,71 @@ class MainWindow(QMainWindow):
         s.valueChanged.connect(self.schedule_preview)
         return s
 
+    def parse_removal_phrases(self) -> list[str]:
+        values = re.split(r"[;؛|,،\n]+", self.removal_phrases.text())
+        phrases: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            phrase = value.strip()
+            key = unicodedata.normalize("NFKC", phrase).casefold()
+            if phrase and key not in seen:
+                phrases.append(phrase)
+                seen.add(key)
+        return phrases
+
+    def detect_repeated_page_markers(self):
+        if len(self.original_page_texts) < 2:
+            QMessageBox.information(
+                self,
+                "Extract pages first",
+                "Extract at least two PDF pages first. Urdu Unicoder will analyze repeated "
+                "lines near the top and bottom of each page.",
+            )
+            return
+        suggestions = discover_repeated_page_markers(self.original_page_texts)
+        existing = {unicodedata.normalize("NFKC", p).casefold() for p in self.parse_removal_phrases()}
+        suggestions = [item for item in suggestions if unicodedata.normalize("NFKC", item[1]).casefold() not in existing]
+        if not suggestions:
+            QMessageBox.information(
+                self, "No repeated markers found",
+                "No new repeated header or footer lines were found in the extracted pages."
+            )
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Detected Page Markers")
+        dialog.resize(620, 430)
+        layout = QVBoxLayout(dialog)
+        explanation = QLabel(
+            "Select the repeated page lines to remove during reconstruction. "
+            "Only complete matching lines will be removed."
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+        marker_list = QListWidget()
+        for count, marker in suggestions[:50]:
+            item = QListWidgetItem(f"{count} pages — {marker}")
+            item.setData(Qt.UserRole, marker)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            marker_list.addItem(item)
+        layout.addWidget(marker_list, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        selected = [
+            marker_list.item(index).data(Qt.UserRole)
+            for index in range(marker_list.count())
+            if marker_list.item(index).checkState() == Qt.Checked
+        ]
+        if selected:
+            combined = self.parse_removal_phrases() + selected
+            self.removal_phrases.setText("; ".join(combined))
+            self.statusBar().showMessage(f"Added {len(selected)} page marker(s)", 4500)
+
     def _apply_dark_theme(self):
         self.setStyleSheet("""
         QMainWindow, QWidget { background: #15171a; color: #e8e8e8; font-size: 10pt; }
@@ -959,6 +1094,7 @@ class MainWindow(QMainWindow):
             margin_inner_mm=self.margin_inner.value(),
             margin_outer_mm=self.margin_outer.value(),
             remove_jari_hai=self.remove_jari.isChecked(),
+            removal_phrases=self.parse_removal_phrases(),
             join_wrapped_lines=self.join_lines.isChecked(),
             preserve_blank_lines=self.preserve_blanks.isChecked(),
             page_numbers=self.page_numbers.isChecked(),
@@ -1000,6 +1136,7 @@ class MainWindow(QMainWindow):
         self.margin_inner.setValue(settings.margin_inner_mm)
         self.margin_outer.setValue(settings.margin_outer_mm)
         self.remove_jari.setChecked(settings.remove_jari_hai)
+        self.removal_phrases.setText("; ".join(settings.removal_phrases))
         self.join_lines.setChecked(settings.join_wrapped_lines)
         self.preserve_blanks.setChecked(settings.preserve_blank_lines)
         self.page_numbers.setChecked(settings.page_numbers)
@@ -1253,6 +1390,96 @@ class MainWindow(QMainWindow):
         cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
         self._replace_selection_or_all(cursor, cleaned, had_selection)
         self.statusBar().showMessage("Whitespace and extra blank lines cleaned", 4000)
+
+    def polish_urdu_punctuation(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            return
+        polished = re.sub(r"(?<=[\u0600-\u06FF])\?", "؟", text)
+        polished = re.sub(r"(?<=[\u0600-\u06FF]),", "،", polished)
+        polished = re.sub(r"(?<=[\u0600-\u06FF]);", "؛", polished)
+        polished = re.sub(r"[ \t]+([۔،؛؟!])", r"\1", polished)
+        polished = re.sub(r"([۔،؛؟!])(?=[\u0600-\u06FFA-Za-z0-9])", r"\1 ", polished)
+        self._replace_selection_or_all(cursor, polished, had_selection)
+        self.statusBar().showMessage("Urdu punctuation polished", 4000)
+
+    def remove_consecutive_duplicate_lines(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            return
+        output: list[str] = []
+        previous_key: Optional[str] = None
+        removed = 0
+        for line in text.splitlines():
+            key = unicodedata.normalize("NFKC", re.sub(r"\s+", " ", line).strip()).casefold()
+            if key and key == previous_key:
+                removed += 1
+                continue
+            output.append(line)
+            previous_key = key if key else None
+        self._replace_selection_or_all(cursor, "\n".join(output), had_selection)
+        self.statusBar().showMessage(f"Removed {removed:,} consecutive duplicate line(s)", 4000)
+
+    def show_unicode_health_check(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            QMessageBox.information(self, "Unicode Health Check", "The editor is empty.")
+            return
+        presentation_forms = sum(
+            1 for char in text
+            if 0xFB50 <= ord(char) <= 0xFDFF or 0xFE70 <= ord(char) <= 0xFEFF
+        )
+        bidi_pattern = r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]"
+        bidi_controls = len(re.findall(bidi_pattern, text))
+        replacement_chars = text.count("\ufffd")
+        unsafe_controls = sum(
+            1 for char in text
+            if unicodedata.category(char) == "Cc" and char not in "\n\t\r"
+        )
+        repeated_spaces = len(re.findall(r"[ \t]{2,}", text))
+        excess_blank_groups = len(re.findall(r"\n{3,}", text))
+        duplicate_lines = 0
+        previous_key: Optional[str] = None
+        for line in text.splitlines():
+            key = unicodedata.normalize("NFKC", re.sub(r"\s+", " ", line).strip()).casefold()
+            if key and key == previous_key:
+                duplicate_lines += 1
+            previous_key = key if key else None
+
+        issues = [
+            f"Legacy presentation-form glyphs: {presentation_forms:,}",
+            f"Hidden bidi direction controls: {bidi_controls:,}",
+            f"Invalid replacement characters (�): {replacement_chars:,}",
+            f"Unsafe control characters: {unsafe_controls:,}",
+            f"Repeated-space groups: {repeated_spaces:,}",
+            f"Excess blank-line groups: {excess_blank_groups:,}",
+            f"Consecutive duplicate lines: {duplicate_lines:,}",
+        ]
+        safe_fixes = presentation_forms + bidi_controls + unsafe_controls
+        if safe_fixes == 0 and repeated_spaces == 0 and excess_blank_groups == 0 and duplicate_lines == 0 and replacement_chars == 0:
+            QMessageBox.information(
+                self, "Unicode Health Check",
+                "No common Unicode or manuscript-cleanup problems were detected.\n\n" + "\n".join(issues)
+            )
+            return
+        reply = QMessageBox.question(
+            self,
+            "Unicode Health Check",
+            "\n".join(issues) +
+            "\n\nApply safe fixes now? This normalizes legacy glyphs and removes hidden direction/control characters. "
+            "Spacing and duplicate-line changes remain separate commands so you control them.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        fixed = unicodedata.normalize("NFKC", text)
+        fixed = re.sub(bidi_pattern, "", fixed)
+        fixed = "".join(
+            char for char in fixed
+            if unicodedata.category(char) != "Cc" or char in "\n\t\r"
+        )
+        self._replace_selection_or_all(cursor, fixed, had_selection)
+        self.statusBar().showMessage("Safe Unicode health fixes applied", 4500)
 
     def duplicate_current_line(self):
         cursor = self.editor.textCursor()
@@ -1763,8 +1990,12 @@ p.heading {{
         PDFs that store words in display order. Disable it if an already-correct PDF becomes
         reversed. <b>Join wrapped lines</b> merges visual PDF rows. <b>Join all wrapped lines into
         paragraphs</b> also ignores artificial blank rows. <b>Preserve blank lines</b> matters
-        when continuous paragraph mode is off. <b>Remove repeated 'جاری ہے'</b> removes page-end
-        continuation markers.</p>
+        when continuous paragraph mode is off. <b>Remove configured page markers</b> removes
+        complete lines matching any words or phrases in the Page markers field. Separate entries
+        with semicolons, commas, or |. Matching is exact apart from trailing punctuation, so a
+        normal sentence containing the same words remains safe. After extracting two or more
+        pages, <b>Detect Repeated Page Markers</b> suggests recurring headers, footers, and
+        continuation phrases from page edges.</p>
         <h2>Book layout</h2>
         <p><b>Urdu font</b> selects an installed typeface; Noto Nastaliq Urdu is recommended.
         <b>Font size</b> controls printed type size. <b>Line height</b> controls baseline spacing;
@@ -1805,6 +2036,14 @@ p.heading {{
         <b>Save Editor Text</b> produces portable UTF-8 text. <b>Clean Whitespace</b> removes
         repeated spaces and excessive blank lines, while <b>Duplicate Line</b> and
         <b>Delete Line</b> speed up manuscript editing.</p>
+        <h2>Urdu publishing intelligence</h2>
+        <p><b>Unicode Health Check</b> reports legacy presentation glyphs, hidden bidi controls,
+        invalid replacement characters, unsafe controls, repeated spaces, excess blank lines,
+        and consecutive duplicate lines. Its repair button applies only safe Unicode changes;
+        spacing and duplicate removal remain explicit commands. <b>Polish Urdu Punctuation</b>
+        converts punctuation beside Urdu text to Urdu comma, semicolon, and question-mark forms
+        and repairs spacing. <b>Remove Consecutive Duplicate Lines</b> removes only adjacent
+        repetitions, preserving intentional repeated text elsewhere in the manuscript.</p>
         <h2>Updates</h2>
         <p>Urdu Unicoder checks its public GitHub version manifest shortly after startup and
         displays a confirmation before installing anything. Source installations update the

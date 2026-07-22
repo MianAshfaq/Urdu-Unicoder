@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication, QScrollArea, QToolBar
 
 from main import (
     APP_NAME, APP_VERSION, ICON_PATH, LOGO_PATH, ExtractWorker, LayoutSettings,
-    MainWindow, extract_docx_text, version_tuple,
+    MainWindow, discover_repeated_page_markers, extract_docx_text, version_tuple,
 )
 
 
@@ -35,6 +35,23 @@ class UnicodeRecoveryTests(unittest.TestCase):
     def test_join_lines_keeps_real_paragraph_boundaries(self):
         text = "first line\nsecond line\n\nnext paragraph"
         self.assertEqual(MainWindow._join_wrapped_lines(text), "first line second line\n\nnext paragraph")
+
+    def test_configurable_page_marker_matching_is_exact(self):
+        phrases = ["جاری ہے", "بقیہ اگلے صفحے پر"]
+        self.assertTrue(ExtractWorker.matches_removal_phrase("جاری ہے۔۔۔", phrases))
+        self.assertTrue(ExtractWorker.matches_removal_phrase("بقیہ اگلے صفحے پر!", phrases))
+        self.assertFalse(ExtractWorker.matches_removal_phrase("کہانی جاری ہے اور دلچسپ ہے۔", phrases))
+
+    def test_repeated_page_marker_discovery_checks_page_edges(self):
+        pages = [
+            "کتاب کا نام\nپہلا متن\nمزید متن\nجاری ہے",
+            "کتاب کا نام\nدوسرا متن\nمزید متن\nجاری ہے۔",
+            "کتاب کا نام\nتیسرا متن\nمزید متن\nجاری ہے",
+        ]
+        suggestions = discover_repeated_page_markers(pages)
+        counts = {text.rstrip("۔"): count for count, text in suggestions}
+        self.assertEqual(counts["کتاب کا نام"], 3)
+        self.assertEqual(counts["جاری ہے"], 3)
 
 
 class UiAndPdfTests(unittest.TestCase):
@@ -74,6 +91,17 @@ class UiAndPdfTests(unittest.TestCase):
         window.editor.setPlainText("ﮐﺘﺎﺏ")
         window.normalize_editor_unicode()
         self.assertEqual(window.editor.toPlainText(), "کتاب")
+        window.editor.clear()
+        window.close()
+
+    def test_urdu_punctuation_and_duplicate_cleanup(self):
+        window = MainWindow()
+        window.editor.setPlainText("کیا حال ہے?ٹھیک,ہاں;\nایک سطر\nایک سطر")
+        window.polish_urdu_punctuation()
+        window.remove_consecutive_duplicate_lines()
+        self.assertEqual(window.editor.toPlainText(), "کیا حال ہے؟ ٹھیک، ہاں؛\nایک سطر")
+        window.removal_phrases.setText("جاری ہے؛ بقیہ؛ سرورق")
+        self.assertEqual(window.parse_removal_phrases(), ["جاری ہے", "بقیہ", "سرورق"])
         window.editor.clear()
         window.close()
 

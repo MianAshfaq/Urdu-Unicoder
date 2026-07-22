@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "notes": "Windows taskbar identity now uses the Urdu Unicoder icon. Added automatic startup update checks and a manual update command.",
+  "version": "1.4.0",
+  "notes": "Added configurable page-marker removal, automatic repeated header/footer detection, Unicode Health Check, Urdu punctuation polishing, and duplicate-line cleanup.",
   "release_url": "https://github.com/MianAshfaq/Urdu-Unicoder/releases/latest",
   "source_archive": "https://github.com/MianAshfaq/Urdu-Unicoder/archive/refs/heads/main.zip"
 }
