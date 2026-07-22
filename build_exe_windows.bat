@@ -19,6 +19,7 @@ echo Building Windows executable...
   --add-data "assets;assets" ^
   --collect-all PySide6 ^
   --collect-all fitz ^
+  --collect-all docx ^
   app\main.py
 
 echo.

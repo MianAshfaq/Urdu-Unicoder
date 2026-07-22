@@ -12,7 +12,10 @@ from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import QApplication, QScrollArea, QToolBar
 
-from main import APP_NAME, LOGO_PATH, ExtractWorker, LayoutSettings, MainWindow
+from main import (
+    APP_NAME, LOGO_PATH, ExtractWorker, LayoutSettings, MainWindow,
+    extract_docx_text,
+)
 
 
 class UnicodeRecoveryTests(unittest.TestCase):
@@ -65,6 +68,34 @@ class UiAndPdfTests(unittest.TestCase):
         self.assertEqual(window.editor.toPlainText(), "کتاب")
         window.editor.clear()
         window.close()
+
+    def test_clipboard_paste_converts_presentation_forms(self):
+        window = MainWindow()
+        QApplication.clipboard().setText("ﮐﺘﺎﺏ اردو")
+        window.paste_and_convert_unicode()
+        self.assertEqual(window.editor.toPlainText(), "کتاب اردو")
+        window.editor.clear()
+        window.close()
+
+    def test_word_import_preserves_paragraph_table_order(self):
+        from docx import Document
+
+        path = Path(tempfile.gettempdir()) / "urdu_unicoder_import_test.docx"
+        try:
+            document = Document()
+            document.add_heading("کتاب کا عنوان", level=1)
+            document.add_paragraph("پہلا پیراگراف")
+            table = document.add_table(rows=1, cols=2)
+            table.cell(0, 0).text = "نام"
+            table.cell(0, 1).text = "تفصیل"
+            document.add_paragraph("آخری پیراگراف")
+            document.save(path)
+            imported = extract_docx_text(str(path))
+            expected = ["کتاب کا عنوان", "پہلا پیراگراف", "نام | تفصیل", "آخری پیراگراف"]
+            positions = [imported.index(value) for value in expected]
+            self.assertEqual(positions, sorted(positions))
+        finally:
+            path.unlink(missing_ok=True)
 
     def test_current_pyside_pdf_margin_api(self):
         output = Path(tempfile.gettempdir()) / "urdu_unicoder_margin_test.pdf"

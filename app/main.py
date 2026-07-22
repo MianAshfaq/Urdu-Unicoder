@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 APP_NAME = "Urdu Unicoder"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_AUTHOR = "Muhammad Ashfaq"
 AUTHOR_GITHUB = "https://github.com/MianAshfaq"
 AUTHOR_WEBSITE = "https://cyberoly.com/"
@@ -42,6 +42,59 @@ def resource_path(relative_path: str) -> Path:
 
 
 LOGO_PATH = resource_path("assets/urdu-unicoder-logo-final.png")
+
+
+def extract_docx_text(path: str) -> str:
+    """Extract paragraphs and tables from a DOCX in their original body order."""
+    try:
+        from docx import Document as WordDocument
+        from docx.oxml.table import CT_Tbl
+        from docx.oxml.text.paragraph import CT_P
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+    except ImportError as exc:
+        raise RuntimeError(
+            "Word import requires python-docx. Run setup_windows.bat to install it."
+        ) from exc
+
+    document = WordDocument(path)
+    lines: list[str] = []
+
+    def add_blank():
+        if lines and lines[-1] != "":
+            lines.append("")
+
+    for element in document.element.body.iterchildren():
+        if isinstance(element, CT_P):
+            paragraph = Paragraph(element, document)
+            text = paragraph.text.strip()
+            style_name = paragraph.style.name if paragraph.style is not None else ""
+            if not text:
+                add_blank()
+                continue
+            if style_name.startswith("Heading") or style_name in {"Title", "Subtitle"}:
+                add_blank()
+                lines.append(text)
+                add_blank()
+            elif style_name.startswith("List Bullet"):
+                lines.append(f"• {text}")
+            elif style_name.startswith("List Number"):
+                lines.append(text)
+            else:
+                lines.append(text)
+                add_blank()
+        elif isinstance(element, CT_Tbl):
+            table = Table(element, document)
+            add_blank()
+            for row in table.rows:
+                cells = [re.sub(r"\s+", " ", cell.text).strip() for cell in row.cells]
+                if any(cells):
+                    lines.append(" | ".join(cells))
+            add_blank()
+
+    while lines and lines[-1] == "":
+        lines.pop()
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 @dataclass
@@ -288,6 +341,7 @@ class MainWindow(QMainWindow):
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_pdf)
         tb.addAction(open_action)
+        tb.addAction(self.import_word_action)
 
         open_project_action = QAction("Open Project", self)
         open_project_action.setShortcut("Ctrl+Shift+O")
@@ -328,10 +382,14 @@ class MainWindow(QMainWindow):
         tb.addAction(html_action)
 
         file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction(new_action)
         file_menu.addAction(open_action)
         file_menu.addAction(open_project_action)
-        file_menu.addAction(new_action)
         file_menu.addAction(save_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self.import_word_action)
+        file_menu.addAction(self.import_text_action)
+        file_menu.addAction(self.save_text_action)
         file_menu.addSeparator()
         file_menu.addAction(export_action)
         file_menu.addAction(html_action)
@@ -345,7 +403,7 @@ class MainWindow(QMainWindow):
         for action in [
             self.undo_action, self.redo_action, None,
             self.cut_action, self.copy_action, self.paste_action,
-            self.select_all_action, None, self.find_action,
+            self.paste_unicode_action, self.select_all_action, None, self.find_action,
             self.goto_action, None, self.normalize_action,
             self.stats_action,
         ]:
@@ -361,6 +419,15 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self.rtl_action)
         view_menu.addAction(self.ltr_action)
+
+        tools_menu = self.menuBar().addMenu("&Text Tools")
+        tools_menu.addAction(self.paste_unicode_action)
+        tools_menu.addAction(self.normalize_action)
+        tools_menu.addAction(self.recover_order_action)
+        tools_menu.addAction(self.clean_text_action)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.duplicate_line_action)
+        tools_menu.addAction(self.delete_line_action)
 
         help_menu = self.menuBar().addMenu("&Help")
         guide_action = QAction("Complete User Guide", self)
@@ -438,6 +505,15 @@ class MainWindow(QMainWindow):
         self.copy_action.setShortcut("Ctrl+C")
         self.paste_action = QAction("Paste", self)
         self.paste_action.setShortcut("Ctrl+V")
+        self.paste_unicode_action = QAction("Paste + Unicode", self)
+        self.paste_unicode_action.setShortcut("Ctrl+Shift+V")
+        self.paste_unicode_action.setToolTip("Paste clipboard text after converting legacy Urdu glyphs to standard Unicode")
+        self.import_word_action = QAction("Import Word Document…", self)
+        self.import_word_action.setShortcut("Ctrl+Alt+W")
+        self.import_text_action = QAction("Import Text File…", self)
+        self.import_text_action.setShortcut("Ctrl+Alt+O")
+        self.save_text_action = QAction("Save Editor Text…", self)
+        self.save_text_action.setShortcut("Ctrl+Alt+S")
         self.select_all_action = QAction("Select All", self)
         self.select_all_action.setShortcut("Ctrl+A")
         self.find_action = QAction("Find / Replace", self)
@@ -446,6 +522,14 @@ class MainWindow(QMainWindow):
         self.goto_action.setShortcut("Ctrl+G")
         self.normalize_action = QAction("Normalize Unicode", self)
         self.normalize_action.setShortcut("Ctrl+Shift+U")
+        self.recover_order_action = QAction("Recover Legacy Visual Order", self)
+        self.recover_order_action.setToolTip("Convert presentation forms and correct reversed visual-order Urdu lines")
+        self.clean_text_action = QAction("Clean Whitespace", self)
+        self.clean_text_action.setShortcut("Ctrl+Shift+Space")
+        self.duplicate_line_action = QAction("Duplicate Line", self)
+        self.duplicate_line_action.setShortcut("Ctrl+D")
+        self.delete_line_action = QAction("Delete Line", self)
+        self.delete_line_action.setShortcut("Ctrl+Shift+K")
         self.stats_action = QAction("Text Statistics", self)
         self.stats_action.setShortcut("Ctrl+Shift+I")
         self.zoom_in_action = QAction("Zoom In", self)
@@ -461,8 +545,8 @@ class MainWindow(QMainWindow):
 
         for action in [
             self.undo_action, self.redo_action, self.cut_action, self.copy_action,
-            self.paste_action, self.find_action, self.goto_action,
-            self.normalize_action, self.stats_action, self.zoom_out_action,
+            self.paste_action, self.paste_unicode_action, self.find_action, self.goto_action,
+            self.normalize_action, self.clean_text_action, self.stats_action, self.zoom_out_action,
             self.zoom_reset_action, self.zoom_in_action,
         ]:
             editor_toolbar.addAction(action)
@@ -532,10 +616,18 @@ class MainWindow(QMainWindow):
         self.cut_action.triggered.connect(self.editor.cut)
         self.copy_action.triggered.connect(self.editor.copy)
         self.paste_action.triggered.connect(self.editor.paste)
+        self.paste_unicode_action.triggered.connect(self.paste_and_convert_unicode)
+        self.import_word_action.triggered.connect(self.import_word_document)
+        self.import_text_action.triggered.connect(self.import_text_file)
+        self.save_text_action.triggered.connect(self.save_editor_text)
         self.select_all_action.triggered.connect(self.editor.selectAll)
         self.find_action.triggered.connect(self.show_find_replace)
         self.goto_action.triggered.connect(self.goto_line)
         self.normalize_action.triggered.connect(self.normalize_editor_unicode)
+        self.recover_order_action.triggered.connect(self.recover_legacy_visual_order)
+        self.clean_text_action.triggered.connect(self.clean_editor_text)
+        self.duplicate_line_action.triggered.connect(self.duplicate_current_line)
+        self.delete_line_action.triggered.connect(self.delete_current_line)
         self.stats_action.triggered.connect(self.show_text_statistics)
         self.zoom_in_action.triggered.connect(lambda: self.editor.zoomIn(1))
         self.zoom_out_action.triggered.connect(lambda: self.editor.zoomOut(1))
@@ -998,6 +1090,143 @@ class MainWindow(QMainWindow):
             text = self.editor.toPlainText()
         return cursor, text, has_selection
 
+    def _load_text_into_editor(self, text: str, source_name: str):
+        if not text.strip():
+            QMessageBox.information(self, "No text found", f"No readable text was found in {source_name}.")
+            return
+        if self.editor.toPlainText().strip():
+            choice = QMessageBox.question(
+                self,
+                "Import text",
+                "Replace the current editor text?\n\n"
+                "Choose No to append the imported text, or Cancel to stop.",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if choice == QMessageBox.Cancel:
+                return
+            if choice == QMessageBox.No:
+                cursor = self.editor.textCursor()
+                cursor.movePosition(QTextCursor.End)
+                cursor.insertText("\n\n" + text)
+            else:
+                self.editor.setPlainText(text)
+        else:
+            self.editor.setPlainText(text)
+        self.tabs.setCurrentIndex(1)
+        self.editor.setFocus()
+        self.update_preview()
+        self.statusBar().showMessage(f"Imported {source_name}", 5000)
+
+    def import_word_document(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Microsoft Word Document", "", "Word Documents (*.docx)"
+        )
+        if not path:
+            return
+        try:
+            text = extract_docx_text(path)
+            self._load_text_into_editor(text, Path(path).name)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Word import failed",
+                f"The Word document could not be imported.\n\n{exc}\n\n"
+                "Legacy .doc files must first be saved as .docx in Microsoft Word or LibreOffice.",
+            )
+
+    def import_text_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Unicode Text", "", "Text Files (*.txt *.md);;All Files (*.*)"
+        )
+        if not path:
+            return
+        try:
+            raw = Path(path).read_bytes()
+            text = None
+            for encoding in ("utf-8-sig", "utf-16", "cp1256"):
+                try:
+                    text = raw.decode(encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if text is None:
+                raise UnicodeError("The text encoding was not recognized.")
+            self._load_text_into_editor(text, Path(path).name)
+        except Exception as exc:
+            QMessageBox.critical(self, "Text import failed", str(exc))
+
+    def save_editor_text(self):
+        if not self.editor.toPlainText():
+            QMessageBox.information(self, "Nothing to save", "The editor is empty.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Unicode Text", "Urdu_Unicoder_Text.txt", "Text Files (*.txt)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".txt"):
+            path += ".txt"
+        Path(path).write_text(self.editor.toPlainText(), encoding="utf-8-sig")
+        self.statusBar().showMessage(f"Unicode text saved: {path}", 5000)
+
+    def paste_and_convert_unicode(self):
+        text = QApplication.clipboard().text()
+        if not text:
+            self.statusBar().showMessage("The clipboard does not contain text", 3500)
+            return
+        converted = unicodedata.normalize("NFKC", text)
+        converted = converted.replace("\u200e", "").replace("\u200f", "")
+        converted = converted.replace("\r\n", "\n").replace("\r", "\n")
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        cursor.insertText(converted)
+        cursor.endEditBlock()
+        self.editor.setTextCursor(cursor)
+        self.tabs.setCurrentIndex(1)
+        self.statusBar().showMessage("Clipboard text pasted and converted to Unicode", 4000)
+
+    def recover_legacy_visual_order(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            return
+        recovered = "\n".join(
+            ExtractWorker.recover_visual_order_line(line) if line.strip() else ""
+            for line in text.splitlines()
+        )
+        self._replace_selection_or_all(cursor, recovered, had_selection)
+        self.statusBar().showMessage("Legacy Urdu visual order recovered", 4000)
+
+    def clean_editor_text(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            return
+        lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+        cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+        self._replace_selection_or_all(cursor, cleaned, had_selection)
+        self.statusBar().showMessage("Whitespace and extra blank lines cleaned", 4000)
+
+    def duplicate_current_line(self):
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        cursor.select(QTextCursor.BlockUnderCursor)
+        line = cursor.selectedText()
+        cursor.movePosition(QTextCursor.EndOfBlock)
+        cursor.insertText("\n" + line)
+        cursor.endEditBlock()
+        self.editor.setTextCursor(cursor)
+
+    def delete_current_line(self):
+        cursor = self.editor.textCursor()
+        cursor.beginEditBlock()
+        cursor.select(QTextCursor.BlockUnderCursor)
+        cursor.removeSelectedText()
+        if not cursor.atEnd():
+            cursor.deleteChar()
+        elif cursor.position() > 0:
+            cursor.deletePreviousChar()
+        cursor.endEditBlock()
+        self.editor.setTextCursor(cursor)
+
     def show_find_replace(self):
         cursor = self.editor.textCursor()
         selected = cursor.selectedText().replace("\u2029", "\n")
@@ -1433,6 +1662,17 @@ p.heading {{
         not affect the exported font size. The View menu can switch between right-to-left Urdu
         editing and left-to-right mixed-language editing. The editor footer continuously shows
         cursor line/column and document counts.</p>
+        <h2>Clipboard, Word, and text import</h2>
+        <p><b>Paste + Unicode (Ctrl+Shift+V)</b> reads Windows clipboard text, converts legacy
+        presentation glyphs to standard Unicode, removes directional control artifacts, and
+        inserts the result at the cursor. Use <b>Recover Legacy Visual Order</b> afterward only
+        when the words themselves still appear reversed. <b>Import Word Document</b> reads DOCX
+        paragraphs, headings, lists, and table rows in their original order. Visual Word styling
+        becomes reliable editable text; old binary .doc files must first be saved as .docx.
+        <b>Import Text File</b> supports UTF-8, UTF-16, and common Arabic Windows text.
+        <b>Save Editor Text</b> produces portable UTF-8 text. <b>Clean Whitespace</b> removes
+        repeated spaces and excessive blank lines, while <b>Duplicate Line</b> and
+        <b>Delete Line</b> speed up manuscript editing.</p>
         <h2>Preview, projects, and export</h2>
         <p><b>Refresh Preview</b> applies all current settings. <b>Save Project</b> stores text,
         layout, source path, and page range in a .ubp file. <b>Open Project</b> restores it.

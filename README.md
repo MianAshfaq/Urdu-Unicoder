@@ -30,6 +30,9 @@ Created and maintained by **Muhammad Ashfaq**.
 - Exports print PDF and standards-based UTF-8 RTL HTML
 - Includes tooltips, keyboard shortcuts, an F1 user guide, and an About/credits screen
 - Includes an advanced Unicode editor toolbar with undo/redo, clipboard actions, search and replace, go-to-line, normalization, zoom, direction controls, and live statistics
+- Imports Microsoft Word `.docx`, UTF-8/UTF-16 text, and Markdown files into the editor
+- Pastes clipboard text while converting legacy presentation glyphs to standard Unicode Urdu
+- Saves the editor as portable UTF-8 Unicode text
 
 ## Install on Windows
 
@@ -115,7 +118,13 @@ Tools process the selected editor text. If nothing is selected, they process the
 | `Ctrl+F` | Find and replace |
 | `Ctrl+G` | Go to line |
 | `Ctrl+Shift+U` | Normalize selected text or the complete document |
+| `Ctrl+Shift+V` | Paste clipboard text and convert it to Unicode |
 | `Ctrl+Shift+I` | Text statistics |
+| `Ctrl+Alt+W` | Import a Microsoft Word `.docx` file |
+| `Ctrl+Alt+O` | Import a text or Markdown file |
+| `Ctrl+Alt+S` | Save editor content as UTF-8 text |
+| `Ctrl+D` | Duplicate current line |
+| `Ctrl+Shift+K` | Delete current line |
 | `Ctrl++` / `Ctrl+-` | Editor zoom in/out |
 | `Ctrl+0` | Reset editor zoom |
 
@@ -131,6 +140,12 @@ The Text Editor tab provides a Unicode-safe editing toolbar while keeping the do
 - **Zoom:** increases or decreases only the editing view; it does not change the exported book font size.
 - **Right-to-Left / Left-to-Right:** switches editor direction for Urdu or mixed-language material.
 - **Live status:** continuously shows the cursor line/column and document word/character counts.
+- **Paste + Unicode:** reads text from the Windows clipboard, normalizes legacy Urdu presentation glyphs, removes directional control artifacts, and inserts editable Unicode text.
+- **Import Word Document:** imports `.docx` paragraphs, headings, lists, and table rows in document order. Word styling is converted to editable plain text for reliable Urdu publishing.
+- **Import Text File / Save Editor Text:** reads common Unicode encodings and saves portable UTF-8 text.
+- **Recover Legacy Visual Order:** repairs selected or complete legacy text whose Urdu words are stored in display order.
+- **Clean Whitespace:** removes repeated spaces, trailing spaces, and excessive blank lines without merging paragraphs.
+- **Duplicate / Delete Line:** provides fast manuscript line editing with `Ctrl+D` and `Ctrl+Shift+K`.
 
 ## Limitations
 
