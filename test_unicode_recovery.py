@@ -1,0 +1,65 @@
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, str(Path(__file__).resolve().parent / "app"))
+
+from PySide6.QtCore import QMarginsF
+from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
+from PySide6.QtPrintSupport import QPrinter
+from PySide6.QtWidgets import QApplication, QScrollArea
+
+from main import APP_NAME, ExtractWorker, LayoutSettings, MainWindow
+
+
+class UnicodeRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = ExtractWorker("", 1, 1, LayoutSettings())
+
+    def test_presentation_forms_and_visual_order_are_recovered(self):
+        source = "ﮐﺎ اس اور ﺻﺒﺎ اور ﺗﮭﮯ رﮨﮯ ﺑﺞ دس ﮐﮯ رات"
+        self.assertEqual(self.worker.clean_line(source), "رات کے دس بج رہے تھے اور صبا اور اس کا")
+
+    def test_ellipsis_is_normalized(self):
+        source = ". . . ﺗﮭﮯ ﮨﻮﺋﮯ ﺑﯿﭩﮭﮯ ﻣﯿﮟ ﺑﯿﮉروم اﭘﻨﮯ"
+        self.assertEqual(self.worker.clean_line(source), "اپنے بیڈروم میں بیٹھے ہوئے تھے…")
+
+    def test_join_lines_keeps_real_paragraph_boundaries(self):
+        text = "first line\nsecond line\n\nnext paragraph"
+        self.assertEqual(MainWindow._join_wrapped_lines(text), "first line second line\n\nnext paragraph")
+
+
+class UiAndPdfTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_professional_settings_panel_is_scrollable(self):
+        window = MainWindow()
+        scroll = window.findChild(QScrollArea, "settingsScroll")
+        self.assertIsNotNone(scroll)
+        self.assertTrue(scroll.widgetResizable())
+        self.assertEqual(APP_NAME, "Urdu Unicoder")
+        window.close()
+
+    def test_current_pyside_pdf_margin_api(self):
+        output = Path(tempfile.gettempdir()) / "urdu_unicoder_margin_test.pdf"
+        try:
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setOutputFormat(QPrinter.PdfFormat)
+            printer.setOutputFileName(str(output))
+            printer.setPageSize(QPageSize(QPageSize.A5))
+            printer.setPageMargins(QMarginsF(15, 18, 20, 18), QPageLayout.Millimeter)
+            document = QTextDocument("Urdu Unicoder PDF export test")
+            document.print_(printer)
+            self.assertTrue(output.exists())
+            self.assertGreater(output.stat().st_size, 0)
+        finally:
+            output.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,124 @@
+# Urdu Unicoder
+
+Urdu Unicoder is an open-source Windows desktop application for recovering editable Unicode Urdu from legacy, text-based PDFs, rebuilding natural paragraphs, editing the result, designing a book layout, and exporting print PDF or UTF-8 HTML.
+
+Created and maintained by **Muhammad Ashfaq**.
+
+## Features
+
+- Extracts selectable page ranges without freezing the interface
+- Previews original PDF pages and compares source text with reconstructed text
+- Normalizes Arabic Presentation Forms into searchable Unicode Urdu
+- Recovers legacy PDFs that store Urdu words in reversed visual order
+- Removes repeated `جاری ہے` page-continuation markers
+- Rebuilds wrapped PDF rows into flowing paragraphs
+- Provides a full RTL editor and live book preview
+- Supports A5, B5, and A4 paper; inner/outer/top/bottom margins; running headers; and page numbers
+- Controls Nastaleeq font, size, line height, paragraph spacing, indentation, word spacing, letter spacing, and alignment
+- Includes manual and automatic paragraph cleanup tools
+- Saves and reopens `.ubp` projects
+- Exports print PDF and standards-based UTF-8 RTL HTML
+- Includes tooltips, keyboard shortcuts, an F1 user guide, and an About/credits screen
+
+## Install on Windows
+
+Requirements: Windows 10/11, Python 3.11–3.13, and an internet connection during initial setup.
+
+1. Download or clone this repository.
+2. Double-click `setup_windows.bat` to create a local virtual environment and install dependencies.
+3. Double-click `run_windows.bat` to launch Urdu Unicoder.
+4. Optional: run `build_exe_windows.bat` to create a standalone executable in `dist\Urdu Unicoder`.
+
+For traditional Urdu book output, install **Noto Nastaliq Urdu**, **Jameel Noori Nastaleeq**, or **Mehr Nastaliq Web** in Windows.
+
+## Recommended workflow
+
+1. Choose **Open PDF** (`Ctrl+O`) and select an editable/text-based PDF.
+2. Set **Start** and **End**. For a large book, test 10–30 pages first.
+3. Keep both Unicode recovery options enabled for a legacy PDF, then choose **Extract and Reconstruct** (`Ctrl+R`).
+4. Compare source and reconstructed text in **Text Editor** and make corrections.
+5. Use the paragraph tools if the source contains hard line wraps.
+6. Adjust layout settings and inspect **Book Preview**.
+7. Save the editable project (`Ctrl+S`).
+8. Export a sample PDF and inspect its Urdu shaping, margins, and page flow before exporting the whole book.
+
+## Option reference
+
+### Source and reconstruction
+
+| Option | What it does | When to use it |
+|---|---|---|
+| Start / End | Limits extraction to an inclusive PDF page range. | Use a small range for testing or a chapter at a time. |
+| Convert legacy Urdu glyphs to Unicode | Normalizes Arabic Presentation Form characters into standard Unicode. | Keep enabled for old Urdu publishing PDFs. |
+| Recover reversed visual-order lines | Changes visually stored word order into logical Urdu reading order. | Enable when extracted words appear reversed; disable if correct text becomes reversed. |
+| Remove repeated `جاری ہے` | Deletes page-end continuation markers. | Enable for novels/books that repeat this marker on pages. |
+| Join wrapped lines | Treats PDF visual rows as parts of the same paragraph. | Usually enable for prose and novels. |
+| Preserve blank lines | Keeps meaningful empty source lines. | Useful when continuous paragraph mode is disabled. |
+| Join all wrapped lines into paragraphs | Ignores artificial blank rows inserted by some PDF generators. | Recommended for legacy novels with one extracted row per printed line. |
+
+Scanned/image-only PDFs contain no editable text. Run OCR in another tool before opening them in Urdu Unicoder.
+
+### Book layout
+
+| Option | What it does | Practical guidance |
+|---|---|---|
+| Urdu font | Chooses an installed Unicode typeface. | Noto Nastaliq Urdu is a strong default. |
+| Font size | Sets body text size in points. | Start around 14–18 pt for Nastaleeq, then print a sample. |
+| Line height | Sets the line-height multiplier. | Nastaleeq often needs 1.8–2.3 to avoid collisions. |
+| Paragraph spacing | Adds space after paragraphs. | Use a small value for novels; more for articles. |
+| Page size | Selects A5, B5, or A4. | A5/B5 are common book sizes; A4 is useful for drafts. |
+| Running header | Prints optional text at the page top. | Enter a book or chapter title, or leave blank. |
+| First-line indent | Indents the first line in millimetres. | Use instead of large paragraph gaps for traditional books. |
+| Word spacing | Fine-tunes space between words. | Keep near zero and adjust only after checking preview/PDF. |
+| Letter spacing | Fine-tunes character spacing. | Keep at zero for Urdu unless a tested font needs adjustment. |
+| Text alignment | Justifies, right-aligns, or centers text. | Justify for prose; center headings or special text. |
+| Page numbers | Adds automatic PDF page numbers. | Disable for unnumbered front matter or special exports. |
+
+### Margins
+
+- **Top / Bottom:** vertical whitespace and room for header/footer content.
+- **Inner:** binding-side margin; normally wider so text is not lost in the spine.
+- **Outer:** outside edge margin.
+
+### Paragraph tools
+
+Tools process the selected editor text. If nothing is selected, they process the complete document.
+
+- **Join Selected Lines as Paragraph:** removes hard wraps and keeps blank-line paragraph boundaries.
+- **Split Selected Text at ۔ or .:** inserts paragraph breaks after sentence-ending punctuation.
+- **Minimum source lines:** controls how many source rows automatic paragraph creation waits before accepting a sentence ending.
+- **Auto Make Paragraphs:** joins text and begins a new paragraph only after the minimum line count and sentence punctuation are reached.
+- **Remove Extra Line Breaks:** removes line wrapping inside paragraphs while preserving actual blank-line paragraph breaks.
+
+## Keyboard shortcuts
+
+| Shortcut | Command |
+|---|---|
+| `Ctrl+N` | New project |
+| `Ctrl+O` | Open PDF |
+| `Ctrl+Shift+O` | Open project |
+| `Ctrl+S` | Save project |
+| `Ctrl+R` | Extract and reconstruct |
+| `Ctrl+Shift+P` | Export PDF |
+| `F1` | Complete user guide |
+
+## Limitations
+
+- OCR is not included.
+- Reconstruction is rule-based; ambiguous material requires editorial review.
+- Output quality depends on the Unicode Urdu font installed on the computer.
+- PDF inner/outer margins are applied to the exported layout but are not alternated automatically on odd/even pages.
+- DOCX and EPUB export are not currently included.
+
+## Development and tests
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m unittest discover -v
+.venv\Scripts\python.exe app\main.py
+```
+
+## License
+
+Urdu Unicoder is released under the [MIT License](LICENSE.txt). Third-party packages keep their respective licenses.

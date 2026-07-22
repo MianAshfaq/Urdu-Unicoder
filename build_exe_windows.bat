@@ -1,0 +1,25 @@
+@echo off
+title Build Urdu Unicoder EXE
+cd /d "%~dp0"
+
+if not exist ".venv\Scripts\python.exe" (
+    call setup_windows.bat
+)
+
+echo Installing PyInstaller...
+".venv\Scripts\python.exe" -m pip install pyinstaller
+
+echo Building Windows executable...
+".venv\Scripts\python.exe" -m PyInstaller ^
+  --noconfirm ^
+  --clean ^
+  --windowed ^
+  --name "Urdu Unicoder" ^
+  --collect-all PySide6 ^
+  --collect-all fitz ^
+  app\main.py
+
+echo.
+echo Build complete.
+echo Check the dist folder.
+pause
