@@ -4,6 +4,12 @@ Urdu Unicoder is an open-source Windows desktop application for recovering edita
 
 Created and maintained by **Muhammad Ashfaq**.
 
+## Author and social links
+
+- Website: [CyberOly.com](https://cyberoly.com/)
+- GitHub: [@MianAshfaq](https://github.com/MianAshfaq)
+- Facebook: [@MianAshfaq012](https://www.facebook.com/MianAshfaq012)
+
 ## Features
 
 - Extracts selectable page ranges without freezing the interface

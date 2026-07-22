@@ -26,6 +26,9 @@ from PySide6.QtWidgets import (
 APP_NAME = "Urdu Unicoder"
 APP_VERSION = "1.0.0"
 APP_AUTHOR = "Muhammad Ashfaq"
+AUTHOR_GITHUB = "https://github.com/MianAshfaq"
+AUTHOR_WEBSITE = "https://cyberoly.com/"
+AUTHOR_FACEBOOK = "https://www.facebook.com/MianAshfaq012"
 PROJECT_EXT = ".ubp"
 
 
@@ -1154,14 +1157,29 @@ p.heading {{
         dialog.exec()
 
     def show_about(self):
-        QMessageBox.about(
-            self,
-            f"About {APP_NAME}",
-            f"<h2>{APP_NAME} {APP_VERSION}</h2>"
-            f"<p>Advanced Unicode Urdu PDF reconstruction and book-layout software.</p>"
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"About {APP_NAME}")
+        dialog.resize(540, 390)
+        layout = QVBoxLayout(dialog)
+        about = QTextBrowser()
+        about.setOpenExternalLinks(True)
+        about.setHtml(
+            f"<div style='text-align:center'>"
+            f"<h1>{APP_NAME}</h1><h3>Version {APP_VERSION}</h3>"
+            f"<p>Advanced Unicode Urdu PDF reconstruction, RTL editing, "
+            f"and professional book-layout software.</p>"
             f"<p><b>Created and maintained by {APP_AUTHOR}</b></p>"
-            f"<p>Open-source software released under the MIT License.</p>",
+            f"<p><a href='{AUTHOR_WEBSITE}'>Website: CyberOly.com</a><br>"
+            f"<a href='{AUTHOR_GITHUB}'>GitHub: @MianAshfaq</a><br>"
+            f"<a href='{AUTHOR_FACEBOOK}'>Facebook: @MianAshfaq012</a></p>"
+            f"<p>Open-source software released under the MIT License.</p>"
+            f"</div>"
         )
+        layout.addWidget(about)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def closeEvent(self, event):
         if self.editor.toPlainText().strip():
