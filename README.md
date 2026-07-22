@@ -1,5 +1,9 @@
 # Urdu Unicoder
 
+<p align="center">
+  <img src="assets/urdu-unicoder-logo-final.png" alt="Urdu Unicoder logo" width="220">
+</p>
+
 Urdu Unicoder is an open-source Windows desktop application for recovering editable Unicode Urdu from legacy, text-based PDFs, rebuilding natural paragraphs, editing the result, designing a book layout, and exporting print PDF or UTF-8 HTML.
 
 Created and maintained by **Muhammad Ashfaq**.
@@ -25,6 +29,7 @@ Created and maintained by **Muhammad Ashfaq**.
 - Saves and reopens `.ubp` projects
 - Exports print PDF and standards-based UTF-8 RTL HTML
 - Includes tooltips, keyboard shortcuts, an F1 user guide, and an About/credits screen
+- Includes an advanced Unicode editor toolbar with undo/redo, clipboard actions, search and replace, go-to-line, normalization, zoom, direction controls, and live statistics
 
 ## Install on Windows
 
@@ -107,6 +112,25 @@ Tools process the selected editor text. If nothing is selected, they process the
 | `Ctrl+R` | Extract and reconstruct |
 | `Ctrl+Shift+P` | Export PDF |
 | `F1` | Complete user guide |
+| `Ctrl+F` | Find and replace |
+| `Ctrl+G` | Go to line |
+| `Ctrl+Shift+U` | Normalize selected text or the complete document |
+| `Ctrl+Shift+I` | Text statistics |
+| `Ctrl++` / `Ctrl+-` | Editor zoom in/out |
+| `Ctrl+0` | Reset editor zoom |
+
+## Advanced text editor
+
+The Text Editor tab provides a Unicode-safe editing toolbar while keeping the document as portable plain text:
+
+- **Undo / Redo, Cut / Copy / Paste, Select All:** familiar document-editing commands with standard Windows shortcuts.
+- **Find / Replace:** forward and backward search, case-sensitive matching, whole-word matching, single replacement, and replace-all.
+- **Go to Line:** jumps directly to a line in very large books.
+- **Normalize Unicode:** converts selected text—or the complete document when nothing is selected—to normalized Unicode compatibility form.
+- **Text Statistics:** reports words, characters, characters without spaces, lines, and paragraphs.
+- **Zoom:** increases or decreases only the editing view; it does not change the exported book font size.
+- **Right-to-Left / Left-to-Right:** switches editor direction for Urdu or mixed-language material.
+- **Live status:** continuously shows the cursor line/column and document word/character counts.
 
 ## Limitations
 

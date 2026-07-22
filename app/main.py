@@ -13,23 +13,35 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QMarginsF
-from PySide6.QtGui import QAction, QFont, QImage, QPixmap, QTextDocument, QPageSize, QPageLayout, QTextCursor
+from PySide6.QtGui import (
+    QAction, QFont, QIcon, QImage, QPixmap, QTextDocument, QPageSize,
+    QPageLayout, QTextCursor,
+)
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QMessageBox, QWidget, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QSpinBox,
     QDoubleSpinBox, QComboBox, QLineEdit, QCheckBox, QFormLayout, QGroupBox,
     QProgressBar, QSplitter, QPlainTextEdit, QTextBrowser, QTabWidget,
-    QToolBar, QScrollArea, QDialog, QDialogButtonBox
+    QToolBar, QScrollArea, QDialog, QDialogButtonBox, QInputDialog
 )
 
 APP_NAME = "Urdu Unicoder"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_AUTHOR = "Muhammad Ashfaq"
 AUTHOR_GITHUB = "https://github.com/MianAshfaq"
 AUTHOR_WEBSITE = "https://cyberoly.com/"
 AUTHOR_FACEBOOK = "https://www.facebook.com/MianAshfaq012"
 PROJECT_EXT = ".ubp"
+
+
+def resource_path(relative_path: str) -> Path:
+    """Resolve bundled assets in source checkouts and PyInstaller builds."""
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return bundle_root / relative_path
+
+
+LOGO_PATH = resource_path("assets/urdu-unicoder-logo-final.png")
 
 
 @dataclass
@@ -240,6 +252,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
+        if LOGO_PATH.exists():
+            self.setWindowIcon(QIcon(str(LOGO_PATH)))
         self.resize(1450, 900)
 
         self.pdf_path: Optional[str] = None
@@ -260,6 +274,15 @@ class MainWindow(QMainWindow):
         tb = QToolBar("Main")
         tb.setIconSize(QSize(22, 22))
         self.addToolBar(tb)
+
+        if LOGO_PATH.exists():
+            brand = QLabel()
+            brand.setPixmap(QPixmap(str(LOGO_PATH)).scaled(
+                30, 30, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
+            brand.setToolTip(f"{APP_NAME} {APP_VERSION}")
+            brand.setContentsMargins(4, 0, 8, 0)
+            tb.addWidget(brand)
 
         open_action = QAction("Open PDF", self)
         open_action.setShortcut("Ctrl+O")
@@ -318,6 +341,27 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
+        edit_menu = self.menuBar().addMenu("&Edit")
+        for action in [
+            self.undo_action, self.redo_action, None,
+            self.cut_action, self.copy_action, self.paste_action,
+            self.select_all_action, None, self.find_action,
+            self.goto_action, None, self.normalize_action,
+            self.stats_action,
+        ]:
+            if action is None:
+                edit_menu.addSeparator()
+            else:
+                edit_menu.addAction(action)
+
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addAction(self.zoom_in_action)
+        view_menu.addAction(self.zoom_out_action)
+        view_menu.addAction(self.zoom_reset_action)
+        view_menu.addSeparator()
+        view_menu.addAction(self.rtl_action)
+        view_menu.addAction(self.ltr_action)
+
         help_menu = self.menuBar().addMenu("&Help")
         guide_action = QAction("Complete User Guide", self)
         guide_action.setShortcut("F1")
@@ -374,17 +418,138 @@ class MainWindow(QMainWindow):
         original_layout.addWidget(self.original_scroll)
         self.tabs.addTab(original_tab, "Original PDF")
 
-        compare_tab = QSplitter(Qt.Horizontal)
+        compare_tab = QWidget()
+        compare_layout = QVBoxLayout(compare_tab)
+        compare_layout.setContentsMargins(8, 8, 8, 8)
+        compare_layout.setSpacing(8)
+
+        editor_toolbar = QToolBar("Editor")
+        editor_toolbar.setObjectName("editorToolbar")
+        editor_toolbar.setMovable(False)
+        editor_toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+
+        self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcut("Ctrl+Y")
+        self.cut_action = QAction("Cut", self)
+        self.cut_action.setShortcut("Ctrl+X")
+        self.copy_action = QAction("Copy", self)
+        self.copy_action.setShortcut("Ctrl+C")
+        self.paste_action = QAction("Paste", self)
+        self.paste_action.setShortcut("Ctrl+V")
+        self.select_all_action = QAction("Select All", self)
+        self.select_all_action.setShortcut("Ctrl+A")
+        self.find_action = QAction("Find / Replace", self)
+        self.find_action.setShortcut("Ctrl+F")
+        self.goto_action = QAction("Go to Line", self)
+        self.goto_action.setShortcut("Ctrl+G")
+        self.normalize_action = QAction("Normalize Unicode", self)
+        self.normalize_action.setShortcut("Ctrl+Shift+U")
+        self.stats_action = QAction("Text Statistics", self)
+        self.stats_action.setShortcut("Ctrl+Shift+I")
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcut("Ctrl++")
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut("Ctrl+-")
+        self.zoom_reset_action = QAction("Reset Zoom", self)
+        self.zoom_reset_action.setShortcut("Ctrl+0")
+        self.rtl_action = QAction("Right-to-Left", self)
+        self.rtl_action.setShortcut("Ctrl+Shift+R")
+        self.ltr_action = QAction("Left-to-Right", self)
+        self.ltr_action.setShortcut("Ctrl+Shift+L")
+
+        for action in [
+            self.undo_action, self.redo_action, self.cut_action, self.copy_action,
+            self.paste_action, self.find_action, self.goto_action,
+            self.normalize_action, self.stats_action, self.zoom_out_action,
+            self.zoom_reset_action, self.zoom_in_action,
+        ]:
+            editor_toolbar.addAction(action)
+        compare_layout.addWidget(editor_toolbar)
+
+        self.search_panel = QWidget()
+        self.search_panel.setObjectName("searchPanel")
+        search_layout = QHBoxLayout(self.search_panel)
+        search_layout.setContentsMargins(8, 5, 8, 5)
+        self.find_input = QLineEdit()
+        self.find_input.setPlaceholderText("Find Unicode text…")
+        self.find_input.setClearButtonEnabled(True)
+        self.find_input.setMinimumWidth(160)
+        self.replace_input = QLineEdit()
+        self.replace_input.setPlaceholderText("Replace with…")
+        self.replace_input.setClearButtonEnabled(True)
+        self.match_case = QCheckBox("Match case")
+        self.whole_words = QCheckBox("Whole words")
+        find_previous_btn = QPushButton("Previous")
+        find_next_btn = QPushButton("Next")
+        replace_btn = QPushButton("Replace")
+        replace_all_btn = QPushButton("Replace All")
+        close_search_btn = QPushButton("Close")
+        for button in [find_previous_btn, find_next_btn, replace_btn, replace_all_btn, close_search_btn]:
+            button.setMinimumHeight(0)
+        search_layout.addWidget(self.find_input, 2)
+        search_layout.addWidget(self.replace_input, 2)
+        search_layout.addWidget(self.match_case)
+        search_layout.addWidget(self.whole_words)
+        search_layout.addWidget(find_previous_btn)
+        search_layout.addWidget(find_next_btn)
+        search_layout.addWidget(replace_btn)
+        search_layout.addWidget(replace_all_btn)
+        search_layout.addWidget(close_search_btn)
+        self.search_panel.hide()
+        compare_layout.addWidget(self.search_panel)
+
+        compare_splitter = QSplitter(Qt.Horizontal)
         self.source_text = QPlainTextEdit()
         self.source_text.setReadOnly(True)
         self.source_text.setPlaceholderText("Original extracted text")
         self.editor = QPlainTextEdit()
         self.editor.setLayoutDirection(Qt.RightToLeft)
+        self.editor_base_font = QFont(self.editor.font())
         self.editor.setPlaceholderText("Reconstructed Urdu text will appear here")
         self.editor.textChanged.connect(self.schedule_preview)
-        compare_tab.addWidget(self.source_text)
-        compare_tab.addWidget(self.editor)
+        self.editor.setTabStopDistance(40)
+        self.editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        compare_splitter.addWidget(self.source_text)
+        compare_splitter.addWidget(self.editor)
+        compare_splitter.setSizes([420, 580])
+        compare_layout.addWidget(compare_splitter, 1)
+
+        editor_status = QWidget()
+        editor_status_layout = QHBoxLayout(editor_status)
+        editor_status_layout.setContentsMargins(4, 0, 4, 0)
+        self.editor_position_label = QLabel("Line 1, Column 1")
+        self.editor_count_label = QLabel("0 words · 0 characters")
+        editor_status_layout.addWidget(self.editor_position_label)
+        editor_status_layout.addStretch(1)
+        editor_status_layout.addWidget(self.editor_count_label)
+        compare_layout.addWidget(editor_status)
         self.tabs.addTab(compare_tab, "Text Editor")
+
+        self.undo_action.triggered.connect(self.editor.undo)
+        self.redo_action.triggered.connect(self.editor.redo)
+        self.cut_action.triggered.connect(self.editor.cut)
+        self.copy_action.triggered.connect(self.editor.copy)
+        self.paste_action.triggered.connect(self.editor.paste)
+        self.select_all_action.triggered.connect(self.editor.selectAll)
+        self.find_action.triggered.connect(self.show_find_replace)
+        self.goto_action.triggered.connect(self.goto_line)
+        self.normalize_action.triggered.connect(self.normalize_editor_unicode)
+        self.stats_action.triggered.connect(self.show_text_statistics)
+        self.zoom_in_action.triggered.connect(lambda: self.editor.zoomIn(1))
+        self.zoom_out_action.triggered.connect(lambda: self.editor.zoomOut(1))
+        self.zoom_reset_action.triggered.connect(self.reset_editor_zoom)
+        self.rtl_action.triggered.connect(lambda: self.editor.setLayoutDirection(Qt.RightToLeft))
+        self.ltr_action.triggered.connect(lambda: self.editor.setLayoutDirection(Qt.LeftToRight))
+        find_previous_btn.clicked.connect(lambda: self.find_text(backward=True))
+        find_next_btn.clicked.connect(self.find_text)
+        replace_btn.clicked.connect(self.replace_one)
+        replace_all_btn.clicked.connect(self.replace_all)
+        close_search_btn.clicked.connect(self.search_panel.hide)
+        self.find_input.returnPressed.connect(self.find_text)
+        self.editor.cursorPositionChanged.connect(self.update_editor_status)
+        self.editor.textChanged.connect(self.update_editor_status)
 
         preview_tab = QWidget()
         preview_layout = QVBoxLayout(preview_tab)
@@ -620,6 +785,10 @@ class MainWindow(QMainWindow):
         self.setStyleSheet("""
         QMainWindow, QWidget { background: #15171a; color: #e8e8e8; font-size: 10pt; }
         QScrollArea#settingsScroll { border: none; background: #15171a; }
+        QWidget#searchPanel { background: #20252b; border: 1px solid #3d4854; border-radius: 7px; }
+        QToolBar#editorToolbar { background: #20252b; border: 1px solid #343b44; border-radius: 7px; spacing: 3px; padding: 3px; }
+        QToolBar#editorToolbar QToolButton { background: transparent; color: #e9f1f8; padding: 6px 8px; border-radius: 4px; }
+        QToolBar#editorToolbar QToolButton:hover { background: #2f78bd; }
         QMenuBar, QMenu, QToolBar { background: #202328; color: #f2f2f2; }
         QGroupBox { border: 1px solid #3b3f45; border-radius: 8px; margin-top: 12px; padding: 14px 10px 10px 10px; font-weight: 600; }
         QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
@@ -828,6 +997,116 @@ class MainWindow(QMainWindow):
         else:
             text = self.editor.toPlainText()
         return cursor, text, has_selection
+
+    def show_find_replace(self):
+        cursor = self.editor.textCursor()
+        selected = cursor.selectedText().replace("\u2029", "\n")
+        if selected and "\n" not in selected:
+            self.find_input.setText(selected)
+        self.search_panel.show()
+        self.find_input.setFocus()
+        self.find_input.selectAll()
+
+    def find_text(self, backward: bool = False):
+        query = self.find_input.text()
+        if not query:
+            self.show_find_replace()
+            return
+        flags = QTextDocument.FindFlags()
+        if backward:
+            flags |= QTextDocument.FindBackward
+        if self.match_case.isChecked():
+            flags |= QTextDocument.FindCaseSensitively
+        if self.whole_words.isChecked():
+            flags |= QTextDocument.FindWholeWords
+        if not self.editor.find(query, flags):
+            cursor = self.editor.textCursor()
+            cursor.movePosition(QTextCursor.End if backward else QTextCursor.Start)
+            self.editor.setTextCursor(cursor)
+            if not self.editor.find(query, flags):
+                self.statusBar().showMessage(f"Text not found: {query}", 3500)
+
+    def replace_one(self):
+        query = self.find_input.text()
+        if not query:
+            return
+        cursor = self.editor.textCursor()
+        selected = cursor.selectedText()
+        matches = selected == query if self.match_case.isChecked() else selected.casefold() == query.casefold()
+        if matches:
+            cursor.insertText(self.replace_input.text())
+            self.editor.setTextCursor(cursor)
+        self.find_text()
+
+    def replace_all(self):
+        query = self.find_input.text()
+        if not query:
+            return
+        text = self.editor.toPlainText()
+        pattern = re.escape(query)
+        if self.whole_words.isChecked():
+            pattern = rf"(?<!\w){pattern}(?!\w)"
+        flags = 0 if self.match_case.isChecked() else re.IGNORECASE
+        replaced, count = re.subn(pattern, lambda _match: self.replace_input.text(), text, flags=flags)
+        if count:
+            cursor_position = self.editor.textCursor().position()
+            self.editor.setPlainText(replaced)
+            cursor = self.editor.textCursor()
+            cursor.setPosition(min(cursor_position, len(replaced)))
+            self.editor.setTextCursor(cursor)
+        self.statusBar().showMessage(f"Replaced {count:,} occurrence(s)", 4000)
+
+    def goto_line(self):
+        maximum = max(1, self.editor.blockCount())
+        current = self.editor.textCursor().blockNumber() + 1
+        line, accepted = QInputDialog.getInt(
+            self, "Go to Line", f"Line number (1–{maximum}):", current, 1, maximum
+        )
+        if not accepted:
+            return
+        block = self.editor.document().findBlockByNumber(line - 1)
+        if block.isValid():
+            cursor = QTextCursor(block)
+            self.editor.setTextCursor(cursor)
+            self.editor.centerCursor()
+            self.editor.setFocus()
+
+    def normalize_editor_unicode(self):
+        cursor, text, had_selection = self._selected_or_all_text()
+        if not text:
+            return
+        normalized = unicodedata.normalize("NFKC", text)
+        self._replace_selection_or_all(cursor, normalized, had_selection)
+        scope = "selection" if had_selection else "document"
+        self.statusBar().showMessage(f"Unicode normalized in {scope}", 3500)
+
+    def reset_editor_zoom(self):
+        self.editor.setFont(QFont(self.editor_base_font))
+        self.statusBar().showMessage("Editor zoom reset", 2500)
+
+    def update_editor_status(self):
+        cursor = self.editor.textCursor()
+        text = self.editor.toPlainText()
+        words = len(re.findall(r"\S+", text))
+        self.editor_position_label.setText(
+            f"Line {cursor.blockNumber() + 1:,}, Column {cursor.positionInBlock() + 1:,}"
+        )
+        self.editor_count_label.setText(f"{words:,} words · {len(text):,} characters")
+
+    def show_text_statistics(self):
+        text = self.editor.toPlainText()
+        words = len(re.findall(r"\S+", text))
+        non_space = len(re.sub(r"\s", "", text))
+        paragraphs = len([part for part in re.split(r"\n\s*\n", text) if part.strip()])
+        QMessageBox.information(
+            self,
+            "Text Statistics",
+            f"Words: {words:,}\n"
+            f"Characters: {len(text):,}\n"
+            f"Characters without spaces: {non_space:,}\n"
+            f"Lines: {self.editor.blockCount():,}\n"
+            f"Paragraphs: {paragraphs:,}",
+        )
 
     @staticmethod
     def _join_wrapped_lines(text: str) -> str:
@@ -1144,6 +1423,16 @@ p.heading {{
         <b>Auto Make Paragraphs</b> waits for sentence punctuation after the chosen minimum
         source-line count. <b>Remove Extra Line Breaks</b> keeps blank-line paragraph boundaries
         while removing line wrapping inside them.</p>
+        <h2>Advanced text editor</h2>
+        <p><b>Undo, Redo, Cut, Copy, Paste, and Select All</b> use standard Windows shortcuts.
+        <b>Find / Replace</b> supports previous/next navigation, matching case, whole words,
+        one replacement, or replacing every occurrence. <b>Go to Line</b> jumps through long
+        manuscripts. <b>Normalize Unicode</b> applies safe NFKC normalization to the selection,
+        or the whole document when nothing is selected. <b>Text Statistics</b> reports word,
+        character, line, and paragraph totals. <b>Zoom</b> changes only the editing view and does
+        not affect the exported font size. The View menu can switch between right-to-left Urdu
+        editing and left-to-right mixed-language editing. The editor footer continuously shows
+        cursor line/column and document counts.</p>
         <h2>Preview, projects, and export</h2>
         <p><b>Refresh Preview</b> applies all current settings. <b>Save Project</b> stores text,
         layout, source path, and page range in a .ubp file. <b>Open Project</b> restores it.
@@ -1161,6 +1450,13 @@ p.heading {{
         dialog.setWindowTitle(f"About {APP_NAME}")
         dialog.resize(540, 390)
         layout = QVBoxLayout(dialog)
+        if LOGO_PATH.exists():
+            logo = QLabel()
+            logo.setAlignment(Qt.AlignCenter)
+            logo.setPixmap(QPixmap(str(LOGO_PATH)).scaled(
+                150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
+            layout.addWidget(logo)
         about = QTextBrowser()
         about.setOpenExternalLinks(True)
         about.setHtml(
@@ -1200,6 +1496,8 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("Muhammad Ashfaq")
+    if LOGO_PATH.exists():
+        app.setWindowIcon(QIcon(str(LOGO_PATH)))
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

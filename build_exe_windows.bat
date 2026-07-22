@@ -15,6 +15,8 @@ echo Building Windows executable...
   --clean ^
   --windowed ^
   --name "Urdu Unicoder" ^
+  --icon "assets\urdu-unicoder.ico" ^
+  --add-data "assets;assets" ^
   --collect-all PySide6 ^
   --collect-all fitz ^
   app\main.py

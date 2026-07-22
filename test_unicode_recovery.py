@@ -10,9 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "app"))
 from PySide6.QtCore import QMarginsF
 from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
-from PySide6.QtWidgets import QApplication, QScrollArea
+from PySide6.QtWidgets import QApplication, QScrollArea, QToolBar
 
-from main import APP_NAME, ExtractWorker, LayoutSettings, MainWindow
+from main import APP_NAME, LOGO_PATH, ExtractWorker, LayoutSettings, MainWindow
 
 
 class UnicodeRecoveryTests(unittest.TestCase):
@@ -43,6 +43,27 @@ class UiAndPdfTests(unittest.TestCase):
         self.assertIsNotNone(scroll)
         self.assertTrue(scroll.widgetResizable())
         self.assertEqual(APP_NAME, "Urdu Unicoder")
+        window.close()
+
+    def test_logo_and_advanced_editor_are_available(self):
+        window = MainWindow()
+        self.assertTrue(LOGO_PATH.exists())
+        self.assertFalse(window.windowIcon().isNull())
+        self.assertIsNotNone(window.findChild(QScrollArea, "settingsScroll"))
+        self.assertIsNotNone(window.findChild(QToolBar, "editorToolbar"))
+        window.close()
+
+    def test_unicode_find_replace_and_normalization(self):
+        window = MainWindow()
+        window.editor.setPlainText("کتاب اچھی ہے۔ کتاب مفید ہے۔")
+        window.find_input.setText("کتاب")
+        window.replace_input.setText("تحریر")
+        window.replace_all()
+        self.assertEqual(window.editor.toPlainText(), "تحریر اچھی ہے۔ تحریر مفید ہے۔")
+        window.editor.setPlainText("ﮐﺘﺎﺏ")
+        window.normalize_editor_unicode()
+        self.assertEqual(window.editor.toPlainText(), "کتاب")
+        window.editor.clear()
         window.close()
 
     def test_current_pyside_pdf_margin_api(self):
